@@ -7,5 +7,5 @@ module.exports = function(deployer, network, accounts) {
   deployer.link(Shared, [HospA, HospB]);
 
   deployer.deploy(HospA, {from: accounts[0]});
-  deployer.deploy(HospB, {from: accounts[10]});
+  deployer.deploy(HospB, {from: accounts[6]});
 };

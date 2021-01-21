@@ -88,12 +88,11 @@ contract HospitalA {
         doctors[doctor].registered = true;
     }
 
-    // TODO: must be approved by hospital
-    function registerVerifier() public notRegistered notHospital {
-        verifiers[msg.sender].registered = true;
+    function registerVerifier(address verifier) public onlyHospital {
+        verifiers[verifier].registered = true;
 
-        verifiers[msg.sender].averageContractRating = 0;
-        verifiers[msg.sender].contractRatingCount = 0;
+        verifiers[verifier].averageContractRating = 0;
+        verifiers[verifier].contractRatingCount = 0;
     }
 
     //
@@ -113,6 +112,7 @@ contract HospitalA {
 
     event respondedRequest(uint256 requestId);
     event grantedRequest(uint256 requestId);
+
     // event test(bytes32 kh);
 
     // function testing(uint256 key) public {
@@ -134,7 +134,7 @@ contract HospitalA {
                 documents[requests[requestId].bundleHash].patient == msg.sender,
             "Only owner of this document can respond to the doctor request"
         );
-        
+
         if (!requests[requestId].direct) {
             require(
                 requests[requestId].keyHash == keccak256(abi.encode(key)),
@@ -151,6 +151,7 @@ contract HospitalA {
     }
 
     event selfRequest(uint256 requestId);
+
     function requestOnBehalf(
         bytes32 bundleHash,
         uint256 minVerifierCount,
@@ -187,12 +188,11 @@ contract HospitalA {
         emit selfRequest(requestsCount - 1);
     }
 
-
     //
     // Doctor functions
     //
 
-    event requestedDocument(uint256 requestId);
+    event requestedDocument(uint256 requestId, bytes32 keyHash);
 
     function requestDocument(
         bytes32 bundleHash,
@@ -225,9 +225,8 @@ contract HospitalA {
 
         requestsCount += 1;
 
-        emit requestedDocument(requestsCount - 1);
+        emit requestedDocument(requestsCount - 1, keyHash);
     }
-
 
     //
     // Verifier functions
@@ -256,10 +255,11 @@ contract HospitalA {
                 request.verifierAddresses.length < request.maxVerifierCount &&
                 latency <= Shared.MAX_LATENCY)
         ) {
-            uint8 isHashCorrect = (documents[request.bundleHash].keyHash ==
-                keccak256(abi.encode(key)))
-                ? 1
-                : 0;
+            uint8 isHashCorrect =
+                (documents[request.bundleHash].keyHash ==
+                    keccak256(abi.encode(key)))
+                    ? 1
+                    : 0;
 
             // TODO: make sure this is working correctly
             uint16 verifierRating = isHashCorrect;
@@ -289,12 +289,14 @@ contract HospitalA {
             uint64 bestVerifierScore = 0;
 
             for (uint256 i = 0; i < request.verifierAddresses.length; i++) {
-                uint16 verifierRating = request.verifierRatings[request
-                    .verifierAddresses[i]];
-                uint16 verifierReputation = verifiers[request.verifierAddresses[i]]
-                    .averageContractRating;
+                uint16 verifierRating =
+                    request.verifierRatings[request.verifierAddresses[i]];
+                uint16 verifierReputation =
+                    verifiers[request.verifierAddresses[i]]
+                        .averageContractRating;
 
-                uint64 verifierScore = verifierRating * (verifierReputation + 1)**2;
+                uint64 verifierScore =
+                    verifierRating * (verifierReputation + 1)**2;
 
                 if (verifierScore >= bestVerifierScore) {
                     bestVerifierScore = verifierScore;
@@ -305,23 +307,25 @@ contract HospitalA {
             }
 
             for (uint16 i = 0; i < request.verifierAddresses.length; i++) {
-                Shared.Verifier memory verifier = verifiers[request
-                    .verifierAddresses[i]];
+                Shared.Verifier memory verifier =
+                    verifiers[request.verifierAddresses[i]];
                 verifiers[request.verifierAddresses[i]].averageContractRating =
                     (verifier.contractRatingCount *
                         verifier.averageContractRating +
                         request.verifierRatings[request.verifierAddresses[i]]) /
                     (verifier.contractRatingCount + 1);
-                verifiers[request.verifierAddresses[i]].contractRatingCount += 1;
+                verifiers[request.verifierAddresses[i]]
+                    .contractRatingCount += 1;
             }
 
-            bytes32 tokenId = keccak256(
-                abi.encode(
-                    request.requester,
-                    bestVerifierAddress,
-                    block.timestamp
-                )
-            );
+            bytes32 tokenId =
+                keccak256(
+                    abi.encode(
+                        request.requester,
+                        bestVerifierAddress,
+                        block.timestamp
+                    )
+                );
 
             requests[requestId].verifiersEvaluated = true;
 
@@ -349,11 +353,21 @@ contract HospitalA {
             if (request.verifierAddresses.length == 0) {
                 request.verifierAddresses.push(msg.sender);
             } else {
+                uint256 currentVerifierScore =
+                    (verifiers[request.verifierAddresses[0]]
+                        .averageContractRating *
+                        verifiers[request.verifierAddresses[0]]
+                            .contractRatingCount +
+                        2**15) /
+                        (verifiers[request.verifierAddresses[0]]
+                            .contractRatingCount + 1);
 
-                uint256 currentVerifierScore = (verifiers[request.verifierAddresses[0]].averageContractRating * verifiers[request.verifierAddresses[0]].contractRatingCount + 2**15) / (verifiers[request.verifierAddresses[0]].contractRatingCount + 1);
-                
-                uint256 newVerifierScore = (verifiers[msg.sender].averageContractRating * verifiers[msg.sender].contractRatingCount + 2**15) / (verifiers[msg.sender].contractRatingCount + 1);
-                
+                uint256 newVerifierScore =
+                    (verifiers[msg.sender].averageContractRating *
+                        verifiers[msg.sender].contractRatingCount +
+                        2**15) /
+                        (verifiers[msg.sender].contractRatingCount + 1);
+
                 if (newVerifierScore > currentVerifierScore) {
                     request.verifierAddresses[0] = msg.sender;
                 }
@@ -368,13 +382,14 @@ contract HospitalA {
                 request.requestTime + Shared.MAX_LATENCY <= block.timestamp) ||
             request.indirectParticipations == request.maxVerifierCount
         ) {
-            bytes32 tokenId = keccak256(
-                abi.encode(
-                    documents[request.bundleHash].patient,
-                    request.verifierAddresses[0],
-                    block.timestamp
-                )
-            );
+            bytes32 tokenId =
+                keccak256(
+                    abi.encode(
+                        documents[request.bundleHash].patient,
+                        request.verifierAddresses[0],
+                        block.timestamp
+                    )
+                );
 
             requests[requestId].verifiersEvaluated = true;
 
@@ -389,19 +404,18 @@ contract HospitalA {
 
         require(request.granted, "Request is not granted by patient");
         require(!request.direct, "Request must be of indirect type");
-        require(request.verifiersEvaluated, "No verifier was chosen for this request");
+        require(
+            request.verifiersEvaluated,
+            "No verifier was chosen for this request"
+        );
         require(msg.sender == request.verifierAddresses[0], "Invalid verifier");
 
-        bytes32 tokenId = keccak256(
-            abi.encode(
-                request.requester,
-                msg.sender,
-                block.timestamp
-            )
-        );
+        bytes32 tokenId =
+            keccak256(
+                abi.encode(request.requester, msg.sender, block.timestamp)
+            );
 
         emit tokenRequester(tokenId, msg.sender);
         emit tokenVerifier(tokenId, request.requester);
     }
-
 }
